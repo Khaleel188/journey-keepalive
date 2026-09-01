@@ -157,7 +157,8 @@
         els.latency.textContent = data.latency_ms != null ? `${data.latency_ms} ms` : "–";
         els.runs.textContent = data.runs ?? 0;
         els.badge.className = "badge " + (data.ok === true ? "ok" : data.ok === false ? "bad" : "unknown");
-        els.badgeText.textContent = data.ok === true ? "Reachable" : data.ok === false ? "Unreachable" : "Unknown";
+        els.badgeText.textContent =
+          data.ok === true ? "Server responded (kept warm)" : data.ok === false ? "Connection failed" : "Unknown";
       } catch (err) {
         els.badge.className = "badge bad";
         els.badgeText.textContent = "Status unavailable";

@@ -35,9 +35,14 @@ jobs:
           if [ "$curl_exit" -ne 0 ]; then
             http_code=0
           fi
+          # "reached" means the server responded at all (any HTTP status),
+          # which is what keeps Render from spinning the service down.
+          # A 404/401/etc still counts — only a connection failure does not.
+          reached=$([ "$curl_exit" -eq 0 ] && echo true || echo false)
           echo "http_code=$http_code" >> "$GITHUB_OUTPUT"
           echo "latency_ms=$latency_ms" >> "$GITHUB_OUTPUT"
-          echo "Pinged $TARGET_URL -> HTTP $http_code in ${latency_ms}ms"
+          echo "reached=$reached" >> "$GITHUB_OUTPUT"
+          echo "Pinged $TARGET_URL -> HTTP $http_code (reached=$reached) in ${latency_ms}ms"
 
       - name: Update status.json
         run: |
@@ -57,7 +62,7 @@ jobs:
           data["url"] = os.environ["TARGET_URL"]
           data["last_ping_at"] = datetime.now(timezone.utc).isoformat()
           data["status_code"] = http_code
-          data["ok"] = 200 <= http_code < 400
+          data["ok"] = os.environ["REACHED"] == "true"
           data["latency_ms"] = int(os.environ["LATENCY_MS"])
           data["runs"] = int(data.get("runs", 0)) + 1
 
@@ -69,6 +74,7 @@ jobs:
           TARGET_URL: https://journey-xvdw.onrender.com
           HTTP_CODE: ${{ steps.ping.outputs.http_code }}
           LATENCY_MS: ${{ steps.ping.outputs.latency_ms }}
+          REACHED: ${{ steps.ping.outputs.reached }}
 
       - name: Commit status
         run: |
