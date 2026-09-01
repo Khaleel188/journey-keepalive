@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Journey Keepalive</title>
+  <meta name="description" content="Pings the Journey Render service every 12 minutes to keep it warm." />
+  <link rel="icon" href="data:," />
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b0f14;
+      --panel: #121821;
+      --line: #1e2a38;
+      --ok: #3dd68c;
+      --bad: #ff5d5d;
+      --mute: #8b9bb4;
+      --gold: #d4a017;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: #e8eef7;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      width: 100%;
+      max-width: 560px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 32px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+    }
+    h1 {
+      margin: 0 0 4px;
+      font-size: 22px;
+      letter-spacing: -0.01em;
+    }
+    .sub {
+      color: var(--mute);
+      font-size: 14px;
+      margin: 0 0 24px;
+    }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 0;
+      border-top: 1px solid var(--line);
+      gap: 16px;
+    }
+    .row:first-of-type { border-top: none; }
+    .label { color: var(--mute); font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .value { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; text-align: right; word-break: break-all; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .badge.ok { background: rgba(61,214,140,0.15); color: var(--ok); }
+    .badge.bad { background: rgba(255,93,93,0.15); color: var(--bad); }
+    .badge.unknown { background: rgba(139,155,180,0.15); color: var(--mute); }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+    footer {
+      margin-top: 24px;
+      color: var(--mute);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    a { color: var(--gold); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code { background: rgba(255,255,255,0.06); padding: 1px 5px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Journey Keepalive</h1>
+    <p class="sub">A scheduled GitHub Action pings the Journey API every 12 minutes so Render's free tier doesn't spin it down.</p>
+
+    <div class="row">
+      <span class="label">Target</span>
+      <span class="value"><a id="target" href="#" target="_blank" rel="noopener">–</a></span>
+    </div>
+    <div class="row">
+      <span class="label">Status</span>
+      <span class="value"><span id="badge" class="badge unknown"><span class="dot"></span><span id="badge-text">Loading…</span></span></span>
+    </div>
+    <div class="row">
+      <span class="label">Last ping</span>
+      <span class="value" id="last-ping">–</span>
+    </div>
+    <div class="row">
+      <span class="label">HTTP status</span>
+      <span class="value" id="http-status">–</span>
+    </div>
+    <div class="row">
+      <span class="label">Latency</span>
+      <span class="value" id="latency">–</span>
+    </div>
+    <div class="row">
+      <span class="label">Total pings</span>
+      <span class="value" id="runs">–</span>
+    </div>
+
+    <footer>
+      Pings run on a cron schedule (<code>*/12 * * * *</code>) via GitHub Actions, independent of anyone
+      having this page open. GitHub may delay scheduled runs slightly under load, and disables schedules
+      after 60 days without repository activity — the workflow commits a status update each run to stay active.
+      <br /><br />
+      Source: <a href="https://github.com/Khaleel188/journey-keepalive" target="_blank" rel="noopener">Khaleel188/journey-keepalive</a>
+    </footer>
+  </div>
+
+  <script>
+    const els = {
+      target: document.getElementById("target"),
+      badge: document.getElementById("badge"),
+      badgeText: document.getElementById("badge-text"),
+      lastPing: document.getElementById("last-ping"),
+      httpStatus: document.getElementById("http-status"),
+      latency: document.getElementById("latency"),
+      runs: document.getElementById("runs"),
+    };
+
+    function relativeTime(iso) {
+      if (!iso) return "never";
+      const diffMs = Date.now() - new Date(iso).getTime();
+      const mins = Math.round(diffMs / 60000);
+      if (mins < 1) return "just now";
+      if (mins === 1) return "1 minute ago";
+      if (mins < 60) return `${mins} minutes ago`;
+      const hrs = Math.round(mins / 60);
+      return `${hrs} hour${hrs === 1 ? "" : "s"} ago`;
+    }
+
+    async function load() {
+      try {
+        const res = await fetch(`status.json?ts=${Date.now()}`, { cache: "no-store" });
+        const data = await res.json();
+        els.target.href = data.url;
+        els.target.textContent = data.url;
+        els.lastPing.textContent = data.last_ping_at
+          ? `${new Date(data.last_ping_at).toLocaleString()} (${relativeTime(data.last_ping_at)})`
+          : "never";
+        els.httpStatus.textContent = data.status_code ?? "–";
+        els.latency.textContent = data.latency_ms != null ? `${data.latency_ms} ms` : "–";
+        els.runs.textContent = data.runs ?? 0;
+        els.badge.className = "badge " + (data.ok === true ? "ok" : data.ok === false ? "bad" : "unknown");
+        els.badgeText.textContent = data.ok === true ? "Reachable" : data.ok === false ? "Unreachable" : "Unknown";
+      } catch (err) {
+        els.badge.className = "badge bad";
+        els.badgeText.textContent = "Status unavailable";
+      }
+    }
+
+    load();
+    setInterval(load, 60000);
+  </script>
+</body>
+</html>

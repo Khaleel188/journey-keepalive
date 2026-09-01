@@ -1,0 +1,83 @@
+name: Keepalive ping
+
+on:
+  schedule:
+    # Every 12 minutes. GitHub Actions may delay scheduled runs by a few
+    # minutes under load; disabled automatically after 60 days with no
+    # repository activity (this workflow's own commits count as activity).
+    - cron: "*/12 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: keepalive-ping
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    env:
+      TARGET_URL: https://journey-xvdw.onrender.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ping target
+        id: ping
+        run: |
+          set +e
+          started_ns=$(date +%s%N)
+          http_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 "$TARGET_URL")
+          curl_exit=$?
+          ended_ns=$(date +%s%N)
+          latency_ms=$(( (ended_ns - started_ns) / 1000000 ))
+          if [ "$curl_exit" -ne 0 ]; then
+            http_code=0
+          fi
+          echo "http_code=$http_code" >> "$GITHUB_OUTPUT"
+          echo "latency_ms=$latency_ms" >> "$GITHUB_OUTPUT"
+          echo "Pinged $TARGET_URL -> HTTP $http_code in ${latency_ms}ms"
+
+      - name: Update status.json
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from datetime import datetime, timezone
+
+          path = "status.json"
+          try:
+              with open(path) as f:
+                  data = json.load(f)
+          except FileNotFoundError:
+              data = {}
+
+          http_code = int(os.environ["HTTP_CODE"])
+          data["url"] = os.environ["TARGET_URL"]
+          data["last_ping_at"] = datetime.now(timezone.utc).isoformat()
+          data["status_code"] = http_code
+          data["ok"] = 200 <= http_code < 400
+          data["latency_ms"] = int(os.environ["LATENCY_MS"])
+          data["runs"] = int(data.get("runs", 0)) + 1
+
+          with open(path, "w") as f:
+              json.dump(data, f, indent=2)
+              f.write("\n")
+          PY
+        env:
+          TARGET_URL: https://journey-xvdw.onrender.com
+          HTTP_CODE: ${{ steps.ping.outputs.http_code }}
+          LATENCY_MS: ${{ steps.ping.outputs.latency_ms }}
+
+      - name: Commit status
+        run: |
+          git config user.name "keepalive-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add status.json
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: keepalive ping [skip ci]"
+            git push
+          else
+            echo "No status change to commit"
+          fi
