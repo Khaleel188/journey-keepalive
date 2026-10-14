@@ -1,8 +1,8 @@
 {
   "url": "https://journey-xvdw.onrender.com",
-  "last_ping_at": "2026-10-14T15:24:22.862837+00:00",
-  "status_code": 0,
-  "ok": false,
-  "latency_ms": 60011,
-  "runs": 266
+  "last_ping_at": "2026-10-14T19:29:56.180529+00:00",
+  "status_code": 429,
+  "ok": true,
+  "latency_ms": 134,
+  "runs": 267
 }
